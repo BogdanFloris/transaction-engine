@@ -14,7 +14,7 @@ struct Cli {
 
 fn main() {
     let args = Cli::parse();
-    let mut engine = Engine::from_file(Path::new(args.input_file.as_path()));
+    let mut engine = Engine::from_buf_reader(Path::new(args.input_file.as_path()));
     engine.process();
     engine.output_clients()
 }

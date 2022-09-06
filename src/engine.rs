@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
+use std::io::BufReader;
 use std::path::Path;
 
 #[derive(Debug, Deserialize)]
@@ -88,9 +89,10 @@ where
     reader: Reader<V>,
 }
 
-impl Engine<File> {
-    pub fn from_file(input_path: &Path) -> Self {
-        let reader = Reader::from_path(input_path).unwrap();
+impl Engine<BufReader<File>> {
+    pub fn from_buf_reader(input_path: &Path) -> Self {
+        let file = File::open(input_path).unwrap();
+        let reader = csv::ReaderBuilder::new().from_reader(BufReader::new(file));
         Engine {
             clients: HashMap::new(),
             saved_transactions: HashMap::new(),
@@ -137,28 +139,37 @@ where
                         None => {}
                     }
                 }
-                TransactionType::Resolve => match self.saved_transactions.get(&transaction.tx) {
-                    Some(resolved_transaction) => {
-                        if resolved_transaction.disputed {
-                            self.clients
-                                .get_mut(&transaction.client)
-                                .unwrap()
-                                .resolve(resolved_transaction.amount.unwrap());
+                // I am assuming that a dispute has two possible resolutions,
+                // a resolve or a chargeback, and such when a resolve or chargeback
+                // occurs, the transaction is not longer being disputed.
+                TransactionType::Resolve => {
+                    match self.saved_transactions.get_mut(&transaction.tx) {
+                        Some(resolved_transaction) => {
+                            if resolved_transaction.disputed {
+                                self.clients
+                                    .get_mut(&transaction.client)
+                                    .unwrap()
+                                    .resolve(resolved_transaction.amount.unwrap());
+                            }
+                            resolved_transaction.disputed = false;
                         }
+                        None => {}
                     }
-                    None => {}
-                },
-                TransactionType::Chargeback => match self.saved_transactions.get(&transaction.tx) {
-                    Some(charged_back_transaction) => {
-                        if charged_back_transaction.disputed {
-                            self.clients
-                                .get_mut(&transaction.client)
-                                .unwrap()
-                                .chargeback(charged_back_transaction.amount.unwrap());
+                }
+                TransactionType::Chargeback => {
+                    match self.saved_transactions.get_mut(&transaction.tx) {
+                        Some(charged_back_transaction) => {
+                            if charged_back_transaction.disputed {
+                                self.clients
+                                    .get_mut(&transaction.client)
+                                    .unwrap()
+                                    .chargeback(charged_back_transaction.amount.unwrap());
+                            }
+                            charged_back_transaction.disputed = false;
                         }
+                        None => {}
                     }
-                    None => {}
-                },
+                }
             }
         }
     }
